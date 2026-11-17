@@ -2,6 +2,7 @@ from sqlmodel import Session, create_engine, select
 
 from app import crud
 from app.core.config import settings
+from app.core.permissions import Role
 from app.models import User, UserCreate
 
 engine = create_engine(str(settings.DATABASE_URL), pool_pre_ping=True)
@@ -28,6 +29,29 @@ def init_db(session: Session) -> None:
         user_in = UserCreate(
             email=settings.FIRST_SUPERUSER,
             password=settings.FIRST_SUPERUSER_PASSWORD,
-            is_superuser=True,
+            role=Role.ADMIN,
         )
         user = crud.create_user(session=session, user_create=user_in)
+
+    if settings.FASTAPI_ENV == "development":
+        seed_demo_users(session)
+
+
+# Local-only accounts so a reviewer can try every role; never seeded outside
+# development. They share FIRST_SUPERUSER_PASSWORD.
+DEMO_USERS = {
+    "manager@example.com": Role.MANAGER,
+    "member@example.com": Role.MEMBER,
+}
+
+
+def seed_demo_users(session: Session) -> None:
+    for email, role in DEMO_USERS.items():
+        if crud.get_user_by_email(session=session, email=email):
+            continue
+        crud.create_user(
+            session=session,
+            user_create=UserCreate(
+                email=email, password=settings.FIRST_SUPERUSER_PASSWORD, role=role
+            ),
+        )
