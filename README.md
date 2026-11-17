@@ -1,5 +1,16 @@
 # Full Stack FastAPI Template
 
+## Role-based access (Ender Turing test task)
+
+Adds Admin / Manager / Member access levels on top of the existing template.
+
+- **Time spent:** TODO (timebox ~1h)
+- **Run:** TODO — only if different from [development.md](./development.md)
+- **Tests:** TODO — only if different from the template commands
+- **Try all three roles locally:** TODO (seeded accounts / command)
+- **Assumptions:** TODO
+- **AI conversations:** raw exports in [`ai-conversations/`](./ai-conversations/)
+
 [![Test Docker Compose](../../actions/workflows/test-docker-compose.yml/badge.svg)](../../actions/workflows/test-docker-compose.yml)
 [![Test Backend](../../actions/workflows/test-backend.yml/badge.svg)](../../actions/workflows/test-backend.yml)
 
