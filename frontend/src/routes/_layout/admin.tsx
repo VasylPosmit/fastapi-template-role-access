@@ -38,6 +38,7 @@ export const Route = createFileRoute("/_layout/admin")({
 
 function UsersTableContent() {
   const { user: currentUser } = useAuth()
+  const { can } = usePermissions()
   const { data: users } = useSuspenseQuery(getUsersQueryOptions())
 
   const tableData: UserTableData[] = users.data.map((user: UserPublic) => ({
@@ -45,7 +46,12 @@ function UsersTableContent() {
     isCurrentUser: currentUser?.id === user.id,
   }))
 
-  return <DataTable columns={columns} data={tableData} />
+  // Read-only viewers (e.g. Manager) get no actions column at all.
+  const visibleColumns = can("users:write")
+    ? columns
+    : columns.filter((column) => column.id !== "actions")
+
+  return <DataTable columns={visibleColumns} data={tableData} />
 }
 
 function UsersTable() {
