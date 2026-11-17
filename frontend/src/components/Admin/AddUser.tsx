@@ -28,7 +28,15 @@ import {
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { LoadingButton } from "@/components/ui/loading-button"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import useCustomToast from "@/hooks/useCustomToast"
+import usePermissions from "@/hooks/usePermissions"
 import { handleError } from "@/utils"
 
 const formSchema = z
@@ -42,7 +50,7 @@ const formSchema = z
     confirm_password: z
       .string()
       .min(1, { message: "Please confirm your password" }),
-    is_superuser: z.boolean(),
+    role: z.enum(["admin", "manager", "member"]),
     is_active: z.boolean(),
   })
   .refine((data) => data.password === data.confirm_password, {
@@ -56,6 +64,7 @@ const AddUser = () => {
   const [isOpen, setIsOpen] = useState(false)
   const queryClient = useQueryClient()
   const { showSuccessToast, showErrorToast } = useCustomToast()
+  const { can } = usePermissions()
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -66,7 +75,7 @@ const AddUser = () => {
       full_name: "",
       password: "",
       confirm_password: "",
-      is_superuser: false,
+      role: "member",
       is_active: false,
     },
   })
@@ -184,21 +193,33 @@ const AddUser = () => {
                 )}
               />
 
-              <FormField
-                control={form.control}
-                name="is_superuser"
-                render={({ field }) => (
-                  <FormItem className="flex items-center gap-3 space-y-0">
-                    <FormControl>
-                      <Checkbox
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                      />
-                    </FormControl>
-                    <FormLabel className="font-normal">Is superuser?</FormLabel>
-                  </FormItem>
-                )}
-              />
+              {can("users:assign_role") && (
+                <FormField
+                  control={form.control}
+                  name="role"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Role</FormLabel>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value}
+                      >
+                        <FormControl>
+                          <SelectTrigger className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="admin">Admin</SelectItem>
+                          <SelectItem value="manager">Manager</SelectItem>
+                          <SelectItem value="member">Member</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
 
               <FormField
                 control={form.control}

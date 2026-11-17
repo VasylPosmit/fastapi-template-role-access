@@ -8,6 +8,7 @@ import { columns, type UserTableData } from "@/components/Admin/columns"
 import { DataTable } from "@/components/Common/DataTable"
 import PendingUsers from "@/components/Pending/PendingUsers"
 import useAuth from "@/hooks/useAuth"
+import usePermissions, { hasPermission } from "@/hooks/usePermissions"
 
 function getUsersQueryOptions() {
   return {
@@ -20,8 +21,7 @@ function getUsersQueryOptions() {
 export const Route = createFileRoute("/_layout/admin")({
   component: Admin,
   beforeLoad: async () => {
-    const { data: user } = await UsersService.readUserMe()
-    if (!user.is_superuser) {
+    if (!(await hasPermission("users:read"))) {
       throw redirect({
         to: "/",
       })
@@ -38,6 +38,7 @@ export const Route = createFileRoute("/_layout/admin")({
 
 function UsersTableContent() {
   const { user: currentUser } = useAuth()
+  const { can } = usePermissions()
   const { data: users } = useSuspenseQuery(getUsersQueryOptions())
 
   const tableData: UserTableData[] = users.data.map((user: UserPublic) => ({
@@ -45,7 +46,12 @@ function UsersTableContent() {
     isCurrentUser: currentUser?.id === user.id,
   }))
 
-  return <DataTable columns={columns} data={tableData} />
+  // Read-only viewers (e.g. Manager) get no actions column at all.
+  const visibleColumns = can("users:write")
+    ? columns
+    : columns.filter((column) => column.id !== "actions")
+
+  return <DataTable columns={visibleColumns} data={tableData} />
 }
 
 function UsersTable() {
@@ -57,6 +63,8 @@ function UsersTable() {
 }
 
 function Admin() {
+  const { can } = usePermissions()
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
@@ -66,7 +74,7 @@ function Admin() {
             Manage user accounts and permissions
           </p>
         </div>
-        <AddUser />
+        {can("users:write") && <AddUser />}
       </div>
       <UsersTable />
     </div>

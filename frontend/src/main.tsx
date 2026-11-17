@@ -20,12 +20,15 @@ client.setConfig({
 })
 
 const handleApiError = (error: Error) => {
-  if (
-    error instanceof AxiosError &&
-    [401, 403].includes(error.response?.status ?? 0)
-  ) {
+  if (error instanceof AxiosError && error.response?.status === 401) {
     localStorage.removeItem("access_token")
     window.location.href = "/login"
+  } else if (error instanceof AxiosError && error.response?.status === 403) {
+    // Stay logged in: the role may have changed mid-session. Refresh the
+    // permissions and re-run route guards so a now-forbidden page redirects.
+    // The failing component shows its own error toast.
+    queryClient.invalidateQueries({ queryKey: ["currentUser"] })
+    router.invalidate()
   }
 }
 const queryClient = new QueryClient({

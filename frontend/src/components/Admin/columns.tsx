@@ -10,6 +10,12 @@ export type UserTableData = UserPublic & {
   isCurrentUser: boolean
 }
 
+const roleLabels = {
+  admin: "Admin",
+  manager: "Manager",
+  member: "Member",
+}
+
 export const columns: ColumnDef<DataTableFeatures, UserTableData>[] = [
   {
     accessorKey: "full_name",
@@ -40,11 +46,11 @@ export const columns: ColumnDef<DataTableFeatures, UserTableData>[] = [
     ),
   },
   {
-    accessorKey: "is_superuser",
+    accessorKey: "role",
     header: "Role",
     cell: ({ row }) => (
-      <Badge variant={row.original.is_superuser ? "default" : "secondary"}>
-        {row.original.is_superuser ? "Superuser" : "User"}
+      <Badge variant={row.original.role === "admin" ? "default" : "secondary"}>
+        {roleLabels[row.original.role ?? "member"]}
       </Badge>
     ),
   },

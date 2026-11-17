@@ -30,7 +30,14 @@ extend-ignore-re = [
     "@[a-zA-Z0-9](?:-?[a-zA-Z0-9])*",
     # Name of the package in the PR title
     "Bump certifi ",
+    # Alembic revision ids (random hex), e.g. 28caf424a4a6
+    "\\b[0-9a-f]{12}\\b",
 ]
 
 [tool.typos.default.extend-identifiers]
 alls = "alls"
+
+# Alembic migration filenames start with a random hex revision id.
+[tool.typos.type.alembic]
+extend-glob = ["[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]_*.py"]
+check-filename = false
