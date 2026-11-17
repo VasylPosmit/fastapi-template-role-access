@@ -1,19 +1,10 @@
 # AI conversations
 
-Complete **raw exports** of every AI coding conversation used for this task, as required by the submission rules. No summaries or excerpts replace these files.
+Complete raw exports of every AI coding conversation used for this task. Nothing here is summarised or excerpted.
 
-## Files
+Two Claude Code sessions worked in parallel on the same local checkout:
 
-| File | Tool / model | Started | Purpose |
-| --- | --- | --- | --- |
-| `TODO` | TODO | TODO | TODO |
+- [`build-conductor/`](./build-conductor/) — the main session: scope, architecture, backend, frontend, commits. Reports from the helper agents it dispatched (naming review, requirements audit, frontend executor, independent code review) appear inside its transcript.
+- [`verify-conductor/`](./verify-conductor/) — the verification session: scenario catalogue, `backend/tests/api/routes/test_role_access.py`, `backend/scripts/rehearse_role_migration.py`, and the pass/fail runs against each step.
 
-Naming: `NN-<tool>-<short-topic>.<ext>` (e.g. `01-claude-code-scope-setup.jsonl`), numbered in chronological order.
-
-## Redactions
-
-Secrets are removed before commit. Every redaction is marked inline as `[REDACTED: <reason>]` and listed below.
-
-| File | What was redacted | Why |
-| --- | --- | --- |
-| — | — | — |
+Redactions, if any, are marked inline as `[REDACTED: <reason>]`.

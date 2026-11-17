@@ -4,12 +4,48 @@
 
 Adds Admin / Manager / Member access levels on top of the existing template.
 
-- **Time spent:** TODO (timebox ~1h)
-- **Run:** TODO — only if different from [development.md](./development.md)
-- **Tests:** TODO — only if different from the template commands
-- **Try all three roles locally:** TODO (seeded accounts / command)
-- **Assumptions:** TODO
-- **AI conversations:** raw exports in [`ai-conversations/`](./ai-conversations/)
+**Time spent:** TODO
+
+**Run and test:** unchanged, see [development.md](./development.md). One extra, optional command rehearses the migration on a throwaway database (upgrade, downgrade, re-upgrade, with a read-back check after each step):
+
+```bash
+cd backend && uv run python scripts/rehearse_role_migration.py
+```
+
+**Try all three roles locally.** With `FASTAPI_ENV=development` (the default `.env`), `scripts/prestart.sh` seeds:
+
+| Account | Role | Password |
+| --- | --- | --- |
+| `admin@example.com` (`FIRST_SUPERUSER`) | Admin | `FIRST_SUPERUSER_PASSWORD` |
+| `manager@example.com` | Manager | same |
+| `member@example.com` | Member | same |
+
+Never deploy with `FASTAPI_ENV=development`: it also seeds these accounts (and already enables the template's unauthenticated `/private` routes).
+
+**Where access rules live.** [`backend/app/core/permissions.py`](./backend/app/core/permissions.py): `ROLE_PERMISSIONS` maps each role to its permissions. Endpoints declare `require_permission(Permission.X)`; the frontend reads the same set from `GET /users/me` → `permissions`.
+
+| | Admin | Manager | Member |
+| --- | :-: | :-: | :-: |
+| Own profile, password, own items | yes | yes | yes |
+| List and view users (`users:read`) | yes | yes | no |
+| Create, edit, deactivate, delete users (`users:write`) | yes | no | no |
+| Change a user's role (`users:assign_role`) | yes | no | no |
+| Metrics stub (`metrics:read`) | yes | yes | no |
+| Other users' items (`items:read_any`, `items:write_any`) | yes | no | no |
+| Test email, recovery-email preview (`email:test`) | yes | no | no |
+
+**Assumptions**
+
+- Migration maps `is_superuser = true` to Admin and everyone else to Member; nobody becomes Manager by migration. The upgrade aborts if the result disagrees with `is_superuser`.
+- `is_superuser` stays for now, kept equal to `role == admin` on every write, so the previous code version still works against the migrated database. It is dropped in a follow-up change.
+- Role and active status are read from the database on every request (never from the token), so changes apply to existing sessions on their next request.
+- 401 means the session is no longer valid (bad token, deleted or deactivated user) and logs the user out; 403 means not allowed and keeps the session.
+- At least one active admin must remain (409). Users cannot change their own role or deactivate themselves (403). Admins cannot delete themselves (as in the template).
+- Signup always creates a Member; role fields sent to `/users/me` or signup are ignored.
+- Admin keeps seeing all users' items, as superusers did. Manager sees only their own items.
+- Old app instances are stopped before the migration runs. An old instance that keeps writing users afterwards would not set `role`.
+
+**AI conversations:** raw exports in [`ai-conversations/`](./ai-conversations/).
 
 [![Test Docker Compose](../../actions/workflows/test-docker-compose.yml/badge.svg)](../../actions/workflows/test-docker-compose.yml)
 [![Test Backend](../../actions/workflows/test-backend.yml/badge.svg)](../../actions/workflows/test-backend.yml)
