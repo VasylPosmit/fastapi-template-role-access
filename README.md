@@ -4,7 +4,7 @@
 
 Adds Admin / Manager / Member access levels on top of the existing template.
 
-**Time spent:** TODO
+**Time spent:** about 1 hour (15:00–16:04), plus a final review pass.
 
 **Run and test:** unchanged, see [development.md](./development.md). One extra, optional command rehearses the migration on a throwaway database (upgrade, downgrade, re-upgrade, with a read-back check after each step):
 
