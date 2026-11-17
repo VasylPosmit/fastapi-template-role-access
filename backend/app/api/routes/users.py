@@ -171,7 +171,7 @@ def delete_user_me(session: SessionDep, current_user: CurrentUser) -> Any:
     """
     if current_user.role == Role.ADMIN:
         raise HTTPException(
-            status_code=403, detail="Super users are not allowed to delete themselves"
+            status_code=403, detail="Admins are not allowed to delete themselves"
         )
     session.delete(current_user)
     session.commit()
@@ -230,7 +230,9 @@ def update_user(
     Update a user.
     """
 
-    db_user = session.get(User, user_id)
+    # Row lock: concurrent changes to the same user are serialised, so the
+    # role/is_active read below is the one this request will overwrite.
+    db_user = session.get(User, user_id, with_for_update=True)
     if not db_user:
         raise HTTPException(
             status_code=404,
@@ -277,12 +279,12 @@ def delete_user(
     """
     Delete a user.
     """
-    user = session.get(User, user_id)
+    user = session.get(User, user_id, with_for_update=True)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     if user == current_user:
         raise HTTPException(
-            status_code=403, detail="Super users are not allowed to delete themselves"
+            status_code=403, detail="Admins are not allowed to delete themselves"
         )
     ensure_active_admin_remains(session=session, target=user, removes_admin_access=True)
     statement = delete(Item).where(col(Item.owner_id) == user_id)
