@@ -58,6 +58,9 @@ SEED_USERS = [
     ("member.no-items@rehearsal.test", False, True, 0),
 ]
 
+# Promoted to manager before the drop step (managers did not exist pre-PR1).
+PROMOTED_TO_MANAGER = "member.active@rehearsal.test"
+
 server_url = make_url(str(settings.DATABASE_URL))
 rehearsal_url = server_url.set(database=REHEARSAL_DB)
 
@@ -290,23 +293,60 @@ def main() -> int:
         drop_db()
 
 
+def report(label: str, errors: list[str]) -> bool:
+    for e in errors:
+        logger.info(f"  ❌ {label}: {e}")
+    logger.info(f"  {'✅' if not errors else '❌'} {label}")
+    return not errors
+
+
 def rehearse_drop_step(baseline: Snapshot) -> list[bool]:
     """PR2: drop is_superuser, then prove downgrade rebuilds it from role."""
     assert DROP_SUPERUSER_REVISION and ROLE_REVISION
+    # A manager exists only after PR1, so add one: it must come back non-superuser.
+    with create_engine(rehearsal_url).begin() as conn:
+        conn.execute(
+            text("UPDATE \"user\" SET role = 'manager' WHERE email = :email"),
+            {"email": PROMOTED_TO_MANAGER},
+        )
+    before = snapshot()
+    results = []
+
     alembic("upgrade", DROP_SUPERUSER_REVISION)
-    dropped = compare(
-        "after drop step",
-        baseline,
-        snapshot(),
-        role_rule="backfill",
-        expect_superuser=False,
+    dropped = snapshot()
+    errors = (
+        [] if not dropped["has_superuser"] else ["is_superuser column still present"]
     )
+    errors += [
+        f"{email} {fact} changed"
+        for email, facts in before["users"].items()
+        for fact in ("role", "is_active", "items")
+        if dropped["users"][email][fact] != facts[fact]
+    ]
+    results.append(report("after drop step: column gone, roles unchanged", errors))
+
     alembic("downgrade", ROLE_REVISION)
-    restored = compare(
-        "after drop-step downgrade", baseline, snapshot(), role_rule="backfill"
+    restored = snapshot()
+    errors = [] if restored["has_superuser"] else ["is_superuser column not restored"]
+    for email, facts in restored["users"].items():
+        if facts["is_superuser"] != (facts["role"] == "admin"):
+            errors.append(
+                f"{email} is_superuser={facts['is_superuser']} role={facts['role']}"
+            )
+        if facts["is_superuser"] != baseline["users"][email]["is_superuser"]:
+            errors.append(f"{email} is_superuser differs from original baseline")
+    if restored["users"] != before["users"]:
+        errors.append("restored rows differ from pre-drop rows")
+    results.append(
+        report("after drop-step downgrade: is_superuser == (role == admin)", errors)
     )
+
     alembic("upgrade", DROP_SUPERUSER_REVISION)
-    return [dropped, restored]
+    same = snapshot() == dropped
+    results.append(
+        report("drop-step re-upgrade identical", [] if same else ["differs"])
+    )
+    return results
 
 
 if __name__ == "__main__":
