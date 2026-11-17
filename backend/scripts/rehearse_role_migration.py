@@ -30,10 +30,11 @@ BASELINE_REVISION = "fe56fa70289e"  # last revision before role access
 # PR1 ships two revisions on top of BASELINE_REVISION, in this order:
 # 1) schema: add user.role VARCHAR NOT NULL server_default 'member'
 # 2) data: role = 'admin' where is_superuser (+ admin count == superuser count guard)
+# PR2 adds 3) drop: remove user.is_superuser (downgrade restores it from role).
 # Read from backend/app/alembic/versions/ so the script needs no edit when they land.
 
 
-def role_revisions() -> tuple[str | None, str | None]:
+def role_revisions() -> tuple[str | None, str | None, str | None]:
     scripts = ScriptDirectory.from_config(Config("alembic.ini"))
     newer = [
         rev.revision
@@ -41,11 +42,11 @@ def role_revisions() -> tuple[str | None, str | None]:
         if rev.revision != BASELINE_REVISION
     ]
     newer.reverse()  # oldest first
-    padded = [*newer, None, None]
-    return padded[0], padded[1]
+    padded = [*newer, None, None, None]
+    return padded[0], padded[1], padded[2]
 
 
-ROLE_SCHEMA_REVISION, ROLE_REVISION = role_revisions()
+ROLE_SCHEMA_REVISION, ROLE_REVISION, DROP_SUPERUSER_REVISION = role_revisions()
 
 # Representative population: every superuser/active combination, with items.
 SEED_USERS = [
@@ -123,13 +124,14 @@ def seed() -> None:
     logger.info(f"seeded {len(SEED_USERS)} users")
 
 
-def has_role_column(conn: Connection) -> bool:
+def has_column(conn: Connection, column: str) -> bool:
     return (
         conn.execute(
             text(
                 "SELECT 1 FROM information_schema.columns "
-                "WHERE table_name = 'user' AND column_name = 'role'"
-            )
+                "WHERE table_name = 'user' AND column_name = :column"
+            ),
+            {"column": column},
         ).first()
         is not None
     )
@@ -138,17 +140,21 @@ def has_role_column(conn: Connection) -> bool:
 def snapshot() -> Snapshot:
     """Privilege-relevant facts, keyed by email, plus row counts."""
     with create_engine(rehearsal_url).connect() as conn:
-        has_role = has_role_column(conn)
+        has_role = has_column(conn, "role")
+        has_superuser = has_column(conn, "is_superuser")
         role_col = "u.role" if has_role else "NULL"
+        su_col = "u.is_superuser" if has_superuser else "NULL"
         users = conn.execute(
             text(
-                f"SELECT u.email, u.is_superuser, u.is_active, {role_col} AS role, "
-                'count(i.id) AS items FROM "user" u LEFT JOIN item i ON i.owner_id = u.id '
-                "GROUP BY u.email, u.is_superuser, u.is_active, role ORDER BY u.email"
+                f"SELECT u.email, {su_col} AS is_superuser, u.is_active, "
+                f"{role_col} AS role, count(i.id) AS items "
+                'FROM "user" u LEFT JOIN item i ON i.owner_id = u.id '
+                "GROUP BY u.email, 2, u.is_active, 4 ORDER BY u.email"
             )
         ).all()
     return {
         "has_role": has_role,
+        "has_superuser": has_superuser,
         "users": {
             r.email: {
                 "is_superuser": r.is_superuser,
@@ -164,17 +170,26 @@ def snapshot() -> Snapshot:
 
 
 def compare(
-    label: str, baseline: Snapshot, now: Snapshot, role_rule: str | None
+    label: str,
+    baseline: Snapshot,
+    now: Snapshot,
+    role_rule: str | None,
+    expect_superuser: bool = True,
 ) -> bool:
     """Read-back check: pre-migration facts survive and role follows role_rule.
 
     role_rule: None = no role column; "member" = schema step only, everyone member;
     "backfill" = admin iff is_superuser, else member.
+    expect_superuser: False once PR2's drop step has removed user.is_superuser.
     """
     expect_role = role_rule is not None
     errors = []
     if now["has_role"] != expect_role:
         errors.append(f"role column present={now['has_role']}, expected {expect_role}")
+    if now["has_superuser"] != expect_superuser:
+        errors.append(
+            f"is_superuser present={now['has_superuser']}, expected {expect_superuser}"
+        )
     for key in ("user_count", "item_count"):
         if baseline[key] != now[key]:
             errors.append(f"{key} {baseline[key]} -> {now[key]}")
@@ -183,7 +198,12 @@ def compare(
         if after is None:
             errors.append(f"{email} missing")
             continue
-        for fact in ("is_superuser", "is_active", "items"):
+        facts = (
+            ("is_superuser", "is_active", "items")
+            if expect_superuser
+            else ("is_active", "items")
+        )
+        for fact in facts:
             if before[fact] != after[fact]:
                 errors.append(f"{email} {fact} {before[fact]} -> {after[fact]}")
         if expect_role:
@@ -211,7 +231,8 @@ def compare(
 
 def main() -> int:
     logger.info(
-        f"revisions: baseline={BASELINE_REVISION} schema={ROLE_SCHEMA_REVISION} data={ROLE_REVISION}"
+        f"revisions: baseline={BASELINE_REVISION} schema={ROLE_SCHEMA_REVISION} "
+        f"data={ROLE_REVISION} drop={DROP_SUPERUSER_REVISION}"
     )
     create_db()
     try:
@@ -260,9 +281,32 @@ def main() -> int:
                 f"  {'✅' if same else '❌'} re-upgrade identical to first upgrade"
             )
             results.append(same)
+            if DROP_SUPERUSER_REVISION is None:
+                logger.info("⏳ no drop step yet (PR2): skipping is_superuser removal")
+            else:
+                results += rehearse_drop_step(baseline)
         return 0 if all(results) else 1
     finally:
         drop_db()
+
+
+def rehearse_drop_step(baseline: Snapshot) -> list[bool]:
+    """PR2: drop is_superuser, then prove downgrade rebuilds it from role."""
+    assert DROP_SUPERUSER_REVISION and ROLE_REVISION
+    alembic("upgrade", DROP_SUPERUSER_REVISION)
+    dropped = compare(
+        "after drop step",
+        baseline,
+        snapshot(),
+        role_rule="backfill",
+        expect_superuser=False,
+    )
+    alembic("downgrade", ROLE_REVISION)
+    restored = compare(
+        "after drop-step downgrade", baseline, snapshot(), role_rule="backfill"
+    )
+    alembic("upgrade", DROP_SUPERUSER_REVISION)
+    return [dropped, restored]
 
 
 if __name__ == "__main__":
