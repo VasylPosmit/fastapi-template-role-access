@@ -259,10 +259,6 @@ export type UserPublic = {
      */
     id: string;
     /**
-     * Is Superuser
-     */
-    is_superuser?: boolean;
-    /**
      * Created At
      */
     created_at?: string | null;
@@ -289,10 +285,6 @@ export type UserPublicMe = {
      * Id
      */
     id: string;
-    /**
-     * Is Superuser
-     */
-    is_superuser?: boolean;
     /**
      * Created At
      */

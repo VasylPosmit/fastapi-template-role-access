@@ -2,7 +2,7 @@ import uuid
 from datetime import UTC, datetime
 
 from pydantic import EmailStr
-from sqlalchemy import String, event
+from sqlalchemy import String
 from sqlmodel import Field, Relationship, SQLModel
 
 from app.core.permissions import Permission, Role
@@ -58,22 +58,13 @@ class UpdatePassword(SQLModel):
 class User(UserBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     hashed_password: str
-    # Deprecated: derived from `role` on every write; dropped in a later migration.
-    is_superuser: bool = False
     created_at: datetime | None = Field(default_factory=get_datetime_utc)
     items: list[Item] = Relationship(back_populates="owner", cascade_delete=True)
-
-
-@event.listens_for(User, "before_insert")
-@event.listens_for(User, "before_update")
-def _sync_is_superuser_from_role(_mapper: object, _conn: object, user: User) -> None:
-    user.is_superuser = user.role == Role.ADMIN
 
 
 # Properties to return via API, id is always required
 class UserPublic(UserBase):
     id: uuid.UUID
-    is_superuser: bool = False  # deprecated, read-only mirror of role == admin
     created_at: datetime | None = None
 
 
